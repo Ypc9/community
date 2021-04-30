@@ -2,6 +2,8 @@ package com.ypc.community.controller;
 
 import com.ypc.community.dto.AccessTokenDTO;
 import com.ypc.community.dto.GithubUser;
+import com.ypc.community.mapper.UserMapper;
+import com.ypc.community.model.User;
 import com.ypc.community.provider.GithubProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -9,9 +11,12 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
+import javax.servlet.http.HttpServletRequest;
+import java.util.UUID;
+
 /**
- *@创建人 yinpengcheng
- *@创建时间 2021/4/28
+ * @创建人 yinpengcheng
+ * @创建时间 2021/4/28
  */
 @Controller
 public class AuthorizeController {
@@ -19,16 +24,25 @@ public class AuthorizeController {
     @Autowired
     private GithubProvider githubProvider;
 
+//    @Value("${github.client.id}")
     @Value("${github.client.id}")
     private String clientId;
+
+//    @Value("${github.client.secret}")
     @Value("${github.client.secret}")
     private String clientSecret;
+
+//    @Value("${github.redirect.uri}")
     @Value("${github.redirect.uri}")
     private String redirectUri;
 
+    @Autowired
+    private UserMapper userMapper;
+
     @GetMapping("/callback")
-        public  String callback(@RequestParam(name="code") String code,
-                                @RequestParam(name = "state") String state){
+    public String callback(@RequestParam(name = "code") String code,
+                           @RequestParam(name = "state") String state,
+                           HttpServletRequest request) {
         AccessTokenDTO accessTokenDTO = new AccessTokenDTO();
 //        accessTokenDTO.setClient_id("Iv1.9b1dc2338293f93c");
         accessTokenDTO.setClient_id(clientId);
@@ -39,9 +53,25 @@ public class AuthorizeController {
         accessTokenDTO.setRedirect_uri(redirectUri);
         accessTokenDTO.setState(state);
         String accessToken = githubProvider.getAccessToken(accessTokenDTO);
-        GithubUser user = githubProvider.githubUser(accessToken);//拿到user
-        System.out.println(user.getName());//打印github中的Pubilic profile
+        GithubUser githubUser = githubProvider.githubUser(accessToken);//拿到user
+//        System.out.println(user.getName());//打印github中的Pubilic profile
         //注意：个人的GitHub中如果没有name和bio信息，就会报错
-        return "index";//完成参数的接收
+        if (githubUser != null) {
+            User user = new User();
+            user.setToken(UUID.randomUUID().toString());
+            user.setName(githubUser.getName());
+            user.setAccountId(String.valueOf(githubUser.getId()));
+            user.setGmtCreate(System.currentTimeMillis());//当前时间计算
+            user.setGmtModified(user.getGmtModified());
+            userMapper.insert(user);
+            //登陆成功，写cookie 和session
+            request.getSession().setAttribute("user", githubUser);
+//            return "redirect:index";//重定向页面  找不到地址报错
+            return "redirect:/";//  redirect:/ 意思是它会在本地再请求一次
+        } else {
+            //登陆失败，重新登陆
+            return "redirect:/";
+        }
+//        return "index";//完成参数的接收
     }
 }
